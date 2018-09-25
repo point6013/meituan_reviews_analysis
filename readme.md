@@ -6,6 +6,8 @@
 - [决策树](#决策树)
 - [随机森林](#随机森林)
 - [bagging方法](#bagging方法)
+- [Gradient Boosting方法](#gradient-boosting方法)
+- [xgboost 方法](#xgboost-方法)
 
 <!-- /TOC -->
 
@@ -220,19 +222,6 @@ pd.DataFrame(vect.fit_transform(X_train['cut_comment']).toarray(), columns=vect.
 
 
 <div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -704,3 +693,140 @@ metrics.confusion_matrix(y_test,y_pred)
            [  6, 490]], dtype=int64)
 
 
+####  Gradient Boosting方法
+
+
+```python
+from sklearn.ensemble import GradientBoostingClassifier
+grd = GradientBoostingClassifier(learning_rate=0.18,max_depth=10,n_estimators=240,random_state=42,max_features='sqrt',subsample=0.9,
+                                min_impurity_decrease=0.01)
+                                
+print(grd)
+# Choosing subsample < 1.0 leads to a reduction of variance and an increase in bias.
+# Choosing max_features < n_features leads to a reduction of variance and an increase in bias.降低过拟合，但是可能会增加偏差，降低方差（对应的过拟合）
+pipe=make_pipeline(vect,tfidf,grd)
+pipe.fit(X_train.cut_comment, y_train)
+y_pred = pipe.predict(X_test.cut_comment)
+metrics.accuracy_score(y_test,y_pred)
+```
+
+    GradientBoostingClassifier(criterion='friedman_mse', init=None,
+                  learning_rate=0.18, loss='deviance', max_depth=10,
+                  max_features='sqrt', max_leaf_nodes=None,
+                  min_impurity_decrease=0.01, min_impurity_split=None,
+                  min_samples_leaf=1, min_samples_split=2,
+                  min_weight_fraction_leaf=0.0, n_estimators=240,
+                  presort='auto', random_state=42, subsample=0.9, verbose=0,
+                  warm_start=False)
+    
+
+
+
+
+    0.96560509554140128
+
+
+
+
+```python
+metrics.confusion_matrix(y_test,y_pred)
+```
+
+
+
+
+    array([[265,  24],
+           [  3, 493]], dtype=int64)
+
+
+
+#### xgboost 方法
+
+
+```python
+from xgboost import XGBClassifier   
+# sklearn API 类似于导入的从skearn中导入某个算法，然后再进行实例化即可，初始化算法的时候可以修改默认参数
+from xgboost import plot_importance
+x_train_vect=vect.fit_transform(X_train["cut_comment"])
+x_test_vect= vect.transform(X_test["cut_comment"])
+clf = XGBClassifier(
+silent=1 ,#设置成1则没有运行信息输出，最好是设置为0.是否在运行升级时打印消息。
+# #nthread=4,# cpu 线程数 默认最大
+learning_rate= 0.20, # 学习率
+min_child_weight=0.5, 
+# # 这个参数默认是 1，是每个叶子里面 h 的和至少是多少，对正负样本不均衡时的 0-1 分类而言
+# #，假设 h 在 0.01 附近，min_child_weight 为 1 意味着叶子节点中最少需要包含 100 个样本。
+# #这个参数非常影响结果，控制叶子节点中二阶导的和的最小值，该参数值越小，越容易 overfitting。
+gamma=0.1,  # 树的叶子节点上作进一步分区所需的最小损失减少,越大越保守，一般0.1、0.2这样子。
+subsample=0.7, # 随机采样训练样本 训练实例的子采样比
+max_depth=15,
+max_delta_step=0,#最大增量步长，我们允许每个树的权重估计。
+colsample_bylevel=0.7, # Subsample ratio of columns for each split, in each level.
+colsample_bytree=0.6, # 生成树时进行的列采样 
+reg_lambda=0.04,  # 控制模型复杂度的权重值的L2正则化项参数，参数越大，模型越保守
+reg_alpha=0.05, # L1 正则项参数，参数越大，模型越保守
+### 正则化是在梯度提升树种没有的，这是xgboost与GB方法的区别之一。
+scale_pos_weight=1, #如果取值大于0的话，在类别样本不平衡的情况下有助于快速收敛。平衡正负权重=sum(负类样本)/sum(正类样本)
+# objective= 'reg:logistic', #多分类的问题 指定学习任务和相应的学习目标
+objective='binary:logistic' ,
+# #num_class=10, # 类别数，多分类与 multisoftmax 并用
+n_estimators=900, #树的个数
+random_state=42
+# #eval_metric= 'auc'
+)
+# xgb_model=XGBClassifier()
+# clf = GridSearchCV(xgb_model, {'max_depth': [4, 6,8,10],
+#                                'n_estimators': [50, 100, 200,400,600],
+#                                'gamma':[0.1,0.12,0.15,0.18,0.2],
+#                               'subsample':[0.5,0.6,0.7,0.8,0.9,1.0],
+#                               'learning_rate':[0.1,0.15,0.2],
+#                               'reg_lambda':[0.2,0.4,0.6,0.8]}, verbose=1,
+#                               n_jobs=2)
+clf.fit(x_train_vect,y_train,eval_metric=['auc','error'])
+# clf.fit(x_train_vect,y_train,eval_metric=['auc','error'])
+# print(clf.best_score_)
+# print(clf.best_params_)
+
+
+# #获取验证集合结果
+# # evals_result = clf.evals_result()
+# y_true, y_pred = y_test, clf.predict(x_test_vect)
+# print("Accuracy : %d" % metrics.accuracy_score(y_true, y_pred))
+```
+
+
+
+
+    XGBClassifier(base_score=0.5, booster='gbtree', colsample_bylevel=0.7,
+           colsample_bytree=0.6, gamma=0.1, learning_rate=0.2,
+           max_delta_step=0, max_depth=15, min_child_weight=0.5, missing=None,
+           n_estimators=900, n_jobs=1, nthread=None,
+           objective='binary:logistic', random_state=42, reg_alpha=0.05,
+           reg_lambda=0.04, scale_pos_weight=1, seed=None, silent=1,
+           subsample=0.7)
+
+
+
+
+```python
+y_pred=clf.predict(x_test_vect)
+metrics.accuracy_score(y_test,y_pred)
+```
+
+
+
+
+    0.94777070063694269
+
+
+
+
+```python
+metrics.confusion_matrix(y_test,y_pred)
+```
+
+
+
+
+    array([[260,  29],
+           [ 12, 484]], dtype=int64)
